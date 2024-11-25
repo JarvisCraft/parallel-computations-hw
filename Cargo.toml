@@ -1,0 +1,14 @@
+[package]
+name = "paralell-computations-hw"
+authors = [
+    "Petr Portnov <mrjarviscraft@gmail.com>",
+]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82.0"
+publish = false
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+cl3 = "0.10"
+opencl3 = "0.9.5"
