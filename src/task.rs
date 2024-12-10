@@ -1,4 +1,4 @@
-use crate::types::Value;
+use crate::types::{Value, ONE, ZERO};
 
 /// Column-major matrix.
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
@@ -10,19 +10,27 @@ impl<const N: usize> Matrix<N> {
     }
 
     pub fn zeros() -> Self {
-        Self::of(0.)
+        Self::of(ZERO)
     }
 
     pub fn ones() -> Self {
-        Self::of(1.)
+        Self::of(ONE)
     }
 
-    pub fn into_inner(self) -> Box<[Value]> {
-        self.0
+    pub fn as_slice(&self) -> &[Value] {
+        self.0.as_ref()
     }
 
     pub const fn len(&self) -> usize {
         self.0.len()
+    }
+
+    pub fn from_vec(vec: Vec<Value>) -> Option<Self> {
+        if vec.len() == N * N {
+            Some(Self(vec.into_boxed_slice()))
+        } else {
+            None
+        }
     }
 }
 impl<const N: usize> TryFrom<Box<[Value]>> for Matrix<N> {
@@ -36,6 +44,16 @@ impl<const N: usize> TryFrom<Box<[Value]>> for Matrix<N> {
         }
     }
 }
+impl<const N: usize> TryFrom<Vec<Value>> for Matrix<N> {
+    type Error = ();
+
+    fn try_from(value: Vec<Value>) -> Result<Self, Self::Error> {
+        Self::from_vec(value).ok_or(())
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
-pub struct Task<const N: usize>(Vec<Matrix<N>>);
+pub struct Task<const N: usize>(pub Vec<Matrix<N>>);
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct Solution<const N: usize>(pub Vec<Matrix<N>>);

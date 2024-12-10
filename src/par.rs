@@ -32,7 +32,7 @@ kernel void multiply(
 }"#;
 const KERNEL_NAME: &str = "multiply";
 
-pub fn multiply<const N: usize>(context: Context, a: Matrix<N>, b: Matrix<N>) -> Matrix<N> {
+pub fn multiply<const N: usize>(context: Context, a: &Matrix<N>, b: &Matrix<N>) -> Matrix<N> {
     let buffer_size = N * N;
     assert!(a.len() == buffer_size);
     assert!(b.len() == buffer_size);
@@ -58,14 +58,11 @@ pub fn multiply<const N: usize>(context: Context, a: Matrix<N>, b: Matrix<N>) ->
     }
     .expect("Failed to create buffer for matrix B");
 
-    let a = a.into_inner();
-    let b = b.into_inner();
-
     let a_write_event =
-        unsafe { queue.enqueue_write_buffer(&mut a_buffer, CL_BLOCKING, 0, a.as_ref(), &[]) }
+        unsafe { queue.enqueue_write_buffer(&mut a_buffer, CL_BLOCKING, 0, a.as_slice(), &[]) }
             .expect("Failed to write A");
     let b_write_event =
-        unsafe { queue.enqueue_write_buffer(&mut b_buffer, CL_BLOCKING, 0, b.as_ref(), &[]) }
+        unsafe { queue.enqueue_write_buffer(&mut b_buffer, CL_BLOCKING, 0, b.as_slice(), &[]) }
             .expect("Failed to write B");
 
     let mut execute_kernel = ExecuteKernel::new(&kernel);
