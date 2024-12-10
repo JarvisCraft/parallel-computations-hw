@@ -10,7 +10,6 @@ publish = false
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
-cl3 = "0.10"
 opencl3 = "0.9.5"
 
 [features]

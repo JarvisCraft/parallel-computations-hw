@@ -1,13 +1,22 @@
-use opencl3::{command_queue::CommandQueue, context::Context, kernel::Kernel, program::Program};
+use std::ptr;
 
-use crate::task::Matrix;
+use opencl3::{
+    command_queue::CommandQueue,
+    context::Context,
+    kernel::{ExecuteKernel, Kernel},
+    memory::{Buffer, CL_MEM_READ_ONLY, CL_MEM_READ_WRITE},
+    program::Program,
+    types::{cl_float, cl_int, CL_BLOCKING, CL_NON_BLOCKING},
+};
+
+use crate::{task::Matrix, types::ZERO};
 
 #[cfg(not(feature = "opencl_profiling"))]
 const COMMAND_QUEUE_FLAGS: u64 = 0;
 #[cfg(feature = "opencl_profiling")]
 const COMMAND_QUEUE_FLAGS: u64 = opencl3::command_queue::CL_QUEUE_PROFILING_ENABLE;
 
-const PROGRAMM_SOURCE: &str = r#"
+const PROGRAM_SOURCE: &str = r#"
 kernel void multiply(
     const int N,
     const global float* A,
@@ -15,25 +24,87 @@ kernel void multiply(
     global float* C
 ) {
     const int globalRow = get_global_id(0);
-    const int globalCol = get_global_id(0);
+    const int globalCol = get_global_id(1);
 
     float value = 0.;
-    for (int k = 0; k < K; k++) {
-        value += A[k * N + globalRow] + b[globalCol * N + k];
+    for (int k = 0; k < N; k++) {
+        value += A[k * N + globalRow] + B[globalCol * N + k];
     }
 
-    C[globalCol * M + globalRow] = value;
+    C[globalCol * N + globalRow] = value;
 }"#;
 const KERNEL_NAME: &str = "multiply";
 
 pub fn multiply<const N: usize>(context: Context, a: Matrix<N>, b: Matrix<N>) -> Matrix<N> {
-    let queue = CommandQueue::create_default_with_properties(&context, COMMAND_QUEUE_FLAGS, 1024)
+    let buffer_size = N * N;
+    assert!(a.len() == buffer_size);
+    assert!(b.len() == buffer_size);
+
+    let n = cl_int::try_from(N).expect("N does not fit into cl_int");
+
+    let queue = CommandQueue::create_default_with_properties(&context, COMMAND_QUEUE_FLAGS, 0)
         .expect("Failed to create queue");
-
-    let program = Program::create_and_build_from_source(&context, PROGRAMM_SOURCE, "")
+    let program = Program::create_and_build_from_source(&context, PROGRAM_SOURCE, "")
         .expect("Failed to crate program");
-
     let kernel = Kernel::create(&program, KERNEL_NAME).expect("Failed to create kernel");
 
-    todo!()
+    let mut a_buffer = unsafe {
+        Buffer::<cl_float>::create(&context, CL_MEM_READ_ONLY, buffer_size, ptr::null_mut())
+    }
+    .expect("Failed to create buffer for matrix A");
+    let mut b_buffer = unsafe {
+        Buffer::<cl_float>::create(&context, CL_MEM_READ_ONLY, buffer_size, ptr::null_mut())
+    }
+    .expect("Failed to create buffer for matrix B");
+    let c_buffer = unsafe {
+        Buffer::<cl_float>::create(&context, CL_MEM_READ_WRITE, buffer_size, ptr::null_mut())
+    }
+    .expect("Failed to create buffer for matrix B");
+
+    println!("A buffer: {a_buffer:?}, B buffer: {b_buffer:?}");
+
+    let a = a.into_inner();
+    let b = b.into_inner();
+
+    println!("A0.len() = {}", a.len());
+    println!("B0.len() = {}", b.len());
+
+    let _a = unsafe { queue.enqueue_write_buffer(&mut a_buffer, CL_BLOCKING, 0, a.as_ref(), &[]) }
+        .expect("Failed to write A");
+    println!("-> A written");
+    let _b = unsafe { queue.enqueue_write_buffer(&mut b_buffer, CL_BLOCKING, 0, b.as_ref(), &[]) }
+        .expect("Failed to write B");
+    println!("-> B written");
+
+    let mut execute_kernel = ExecuteKernel::new(&kernel);
+    let kernel_event = unsafe {
+        execute_kernel
+            .set_arg(&n)
+            .set_arg(&a_buffer)
+            .set_arg(&b_buffer)
+            .set_arg(&c_buffer)
+            .set_global_work_size(N)
+            .set_global_work_size(N)
+            //.set_wait_event(&a_write_event)
+            //.set_wait_event(&b_write_event)
+            .enqueue_nd_range(&queue)
+    }
+    .expect("Failed to create kernel event");
+    println!("Creating events");
+
+    let events = vec![kernel_event.get()];
+    let mut result = vec![ZERO; buffer_size];
+    println!("events = {events:?}, result = {result:?}");
+    let read_event =
+        unsafe { queue.enqueue_read_buffer(&c_buffer, CL_BLOCKING, 0, &mut result, &events) }
+            .expect("Failed to wait for read event");
+
+    print!("Waiting...");
+    read_event.wait().expect("Failed to wait for read event");
+    print!("Waited");
+
+    result
+        .into_boxed_slice()
+        .try_into()
+        .expect("Dimensions should match")
 }

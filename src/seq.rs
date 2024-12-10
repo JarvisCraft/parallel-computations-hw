@@ -1,9 +1,9 @@
-use crate::task::Matrix;
+use crate::{task::Matrix, types::ZERO};
 
 pub fn multiply<const N: usize>(a: Matrix<N>, b: Matrix<N>) -> Matrix<N> {
     let a = a.into_inner();
     let b = b.into_inner();
-    let mut c = vec![0.; N * N];
+    let mut c = vec![ZERO; N * N];
 
     for row in 0..N {
         for column in 0..N {
