@@ -36,3 +36,6 @@ impl<const N: usize> TryFrom<Box<[Value]>> for Matrix<N> {
         }
     }
 }
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct Task<const N: usize>(Vec<Matrix<N>>);

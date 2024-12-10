@@ -11,9 +11,6 @@ use opencl3::{
 
 use crate::{task::Matrix, types::ZERO};
 
-#[cfg(not(feature = "opencl_profiling"))]
-const COMMAND_QUEUE_FLAGS: u64 = 0;
-#[cfg(feature = "opencl_profiling")]
 const COMMAND_QUEUE_FLAGS: u64 = opencl3::command_queue::CL_QUEUE_PROFILING_ENABLE;
 
 const PROGRAM_SOURCE: &str = r#"
@@ -28,7 +25,7 @@ kernel void multiply(
 
     float value = 0.;
     for (int k = 0; k < N; k++) {
-        value += A[k * N + globalRow] + B[globalCol * N + k];
+        value += A[k * N + globalRow] * B[globalCol * N + k];
     }
 
     C[globalCol * N + globalRow] = value;
@@ -61,20 +58,15 @@ pub fn multiply<const N: usize>(context: Context, a: Matrix<N>, b: Matrix<N>) ->
     }
     .expect("Failed to create buffer for matrix B");
 
-    println!("A buffer: {a_buffer:?}, B buffer: {b_buffer:?}");
-
     let a = a.into_inner();
     let b = b.into_inner();
 
-    println!("A0.len() = {}", a.len());
-    println!("B0.len() = {}", b.len());
-
-    let _a = unsafe { queue.enqueue_write_buffer(&mut a_buffer, CL_BLOCKING, 0, a.as_ref(), &[]) }
-        .expect("Failed to write A");
-    println!("-> A written");
-    let _b = unsafe { queue.enqueue_write_buffer(&mut b_buffer, CL_BLOCKING, 0, b.as_ref(), &[]) }
-        .expect("Failed to write B");
-    println!("-> B written");
+    let a_write_event =
+        unsafe { queue.enqueue_write_buffer(&mut a_buffer, CL_BLOCKING, 0, a.as_ref(), &[]) }
+            .expect("Failed to write A");
+    let b_write_event =
+        unsafe { queue.enqueue_write_buffer(&mut b_buffer, CL_BLOCKING, 0, b.as_ref(), &[]) }
+            .expect("Failed to write B");
 
     let mut execute_kernel = ExecuteKernel::new(&kernel);
     let kernel_event = unsafe {
@@ -85,23 +77,26 @@ pub fn multiply<const N: usize>(context: Context, a: Matrix<N>, b: Matrix<N>) ->
             .set_arg(&c_buffer)
             .set_global_work_size(N)
             .set_global_work_size(N)
-            //.set_wait_event(&a_write_event)
-            //.set_wait_event(&b_write_event)
+            .set_wait_event(&a_write_event)
+            .set_wait_event(&b_write_event)
             .enqueue_nd_range(&queue)
     }
     .expect("Failed to create kernel event");
-    println!("Creating events");
 
     let events = vec![kernel_event.get()];
     let mut result = vec![ZERO; buffer_size];
-    println!("events = {events:?}, result = {result:?}");
     let read_event =
-        unsafe { queue.enqueue_read_buffer(&c_buffer, CL_BLOCKING, 0, &mut result, &events) }
+        unsafe { queue.enqueue_read_buffer(&c_buffer, CL_NON_BLOCKING, 0, &mut result, &events) }
             .expect("Failed to wait for read event");
 
-    print!("Waiting...");
     read_event.wait().expect("Failed to wait for read event");
-    print!("Waited");
+    let start_time = kernel_event
+        .profiling_command_start()
+        .expect("Failed to get start time");
+    let end_time = kernel_event
+        .profiling_command_end()
+        .expect("Failed to get end time");
+    println!("Took {} ns", end_time - start_time);
 
     result
         .into_boxed_slice()
