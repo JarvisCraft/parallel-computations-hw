@@ -23,10 +23,6 @@ pub fn multiply<const N: usize>(a: &Matrix<N>, b: &Matrix<N>) -> Matrix<N> {
 
 pub fn solve<const N: usize>(task: Task<N>) -> Solution<N> {
     let n = task.0.len();
-    if n == 0 {
-        return Solution(vec![]);
-    }
-
     Solution(
         (0..n)
             .map(|index| {
