@@ -13,6 +13,7 @@ mod par;
 mod seq;
 mod task;
 mod types;
+mod util;
 
 fn main() {
     tracing_subscriber::fmt::init();
@@ -22,9 +23,9 @@ fn main() {
     let context = Context::from_device(&device).expect("Failed to create context from device");
 
     #[cfg(feature = "random")]
-    let task = {
-        const N: usize = 1024;
-        fn gen() -> Matrix<N> {
+    let (n, task) = {
+        const N: usize = 256;
+        fn gen() -> Matrix {
             use rand::prelude::*;
             let mut rng = rand::thread_rng();
             Matrix::from_vec(
@@ -36,36 +37,46 @@ fn main() {
             .unwrap()
         }
 
-        Task((0..8).map(|_| gen()).collect())
+        (N, Task::from_vec((0..8).map(|_| gen()).collect()).unwrap())
     };
     #[cfg(not(feature = "random"))]
-    let task = {
-        let a = Matrix::<2>::from_vec(vec![1., 3., 2., 4.]).unwrap();
-        let b = Matrix::<2>::from_vec(vec![5., 7., 6., 8.]).unwrap();
-        let c = Matrix::<2>::from_vec(vec![9., 11., 10., 12.]).unwrap();
-        Task(vec![
-            a.clone(),
-            b.clone(),
-            c.clone(),
-            a.clone(),
-            b.clone(),
-            c.clone(),
-            a,
-            b,
-            c,
-        ])
+    let (n, task) = {
+        let a = Matrix::from_vec(vec![1., 3., 2., 4.]).unwrap();
+        let b = Matrix::from_vec(vec![5., 7., 6., 8.]).unwrap();
+        let c = Matrix::from_vec(vec![9., 11., 10., 12.]).unwrap();
+        (
+            2,
+            Task::from_vec(vec![
+                a.clone(),
+                b.clone(),
+                c.clone(),
+                a.clone(),
+                b.clone(),
+                c.clone(),
+                a,
+                b,
+                c,
+            ])
+            .unwrap(),
+        )
     };
-    let mut executor = Executor::new(context);
+    let mut executor = Executor::new(n, context);
 
-    let _ = run(Mode::Seq, task.clone(), &mut executor);
-    let (seq_solution, seq_time) = run(Mode::Seq, task.clone(), &mut executor);
-    let _ = run(Mode::Par, task.clone(), &mut executor);
-    let (par_solution, par_time) = run(Mode::Par, task.clone(), &mut executor);
+    let (seq_solution, seq_time) = run(Mode::Seq, &task, &mut executor);
+    let (par_solution, par_time) = run(Mode::Par, &task, &mut executor);
 
     info!("Sequential time: {seq_time:?}");
-    info!("Sequential sol_: {:?}", seq_solution.0[1][3]);
+    info!(
+        "Sequential sol_: {} {:?}",
+        seq_solution.0.len(),
+        seq_solution.0[1][3]
+    );
     info!("  Parallel time: {par_time:?}");
-    info!("  Parallel sol_: {:?}", par_solution.0[1][3]);
+    info!(
+        "  Parallel sol_: {} {:?}",
+        par_solution.0.len(),
+        par_solution.0[1][3]
+    );
 }
 
 fn pick_device() -> Option<Device> {
@@ -78,11 +89,7 @@ fn pick_device() -> Option<Device> {
         .map(|id| Device::new(*id))
 }
 
-fn run<const N: usize>(
-    mode: Mode,
-    task: Task<N>,
-    executor: &mut Executor<N>,
-) -> (Solution<N>, Duration) {
+fn run(mode: Mode, task: &Task, executor: &mut Executor) -> (Solution, Duration) {
     info!("Running execution in {mode:?} mode");
     let begin = time::Instant::now();
     let solution = match mode {

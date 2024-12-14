@@ -24,21 +24,22 @@ const PROGRAM_SOURCE: &str = include_str!("multiply1.cl");
 const KERNEL_NAME: &str = "multiply";
 const LOCAL_WORK_SIZE: usize = 1;
 
-pub struct Executor<const N: usize> {
+pub struct Executor {
     // context: Context,
     command_queue: CommandQueue,
     // program: Program,
     kernel: Kernel,
-    n: cl_int,
+    n: usize,
+    n_int: cl_int,
+    buffer_size: usize,
     a_buffer: Buffer<cl_float>,
     b_buffer: Buffer<cl_float>,
     c_buffer: Buffer<cl_float>,
 }
-impl<const N: usize> Executor<N> {
-    const BUFFER_SIZE: usize = N * N;
-
-    pub fn new(context: Context) -> Self {
-        let n = cl_int::try_from(N).expect("Failed to convert N to cl_int");
+impl Executor {
+    pub fn new(n: usize, context: Context) -> Self {
+        let buffer_size = n.checked_mul(n).expect("`n` is too big");
+        let n_int = cl_int::try_from(n).expect("Failed to convert `n` to cl_int");
 
         let command_queue =
             CommandQueue::create_default_with_properties(&context, COMMAND_QUEUE_FLAGS, 0)
@@ -52,30 +53,15 @@ impl<const N: usize> Executor<N> {
         let kernel = Kernel::create(&program, KERNEL_NAME).expect("Failed to create kernel");
 
         let a_buffer: Buffer<f32> = unsafe {
-            Buffer::<cl_float>::create(
-                &context,
-                CL_MEM_READ_ONLY,
-                Self::BUFFER_SIZE,
-                ptr::null_mut(),
-            )
+            Buffer::<cl_float>::create(&context, CL_MEM_READ_ONLY, buffer_size, ptr::null_mut())
         }
         .expect("Failed to create buffer for matrix A");
         let b_buffer = unsafe {
-            Buffer::<cl_float>::create(
-                &context,
-                CL_MEM_READ_ONLY,
-                Self::BUFFER_SIZE,
-                ptr::null_mut(),
-            )
+            Buffer::<cl_float>::create(&context, CL_MEM_READ_ONLY, buffer_size, ptr::null_mut())
         }
         .expect("Failed to create buffer for matrix B");
         let c_buffer = unsafe {
-            Buffer::<cl_float>::create(
-                &context,
-                CL_MEM_READ_WRITE,
-                Self::BUFFER_SIZE,
-                ptr::null_mut(),
-            )
+            Buffer::<cl_float>::create(&context, CL_MEM_READ_WRITE, buffer_size, ptr::null_mut())
         }
         .expect("Failed to create buffer for matrix B");
 
@@ -85,29 +71,55 @@ impl<const N: usize> Executor<N> {
             // program,
             kernel,
             n,
+            n_int,
+            buffer_size,
             a_buffer,
             b_buffer,
             c_buffer,
         }
     }
 
-    pub fn solve(&mut self, task: Task<N>) -> Solution<N> {
-        let n = task.0.len();
+    pub fn solve(&mut self, task: &Task) -> Solution {
+        assert!(task.n() == self.n, "Task simension shoud match this d");
+        let n = task.matrices().len();
+
         Solution(
             (0..n)
                 .map(|index| {
-                    self.multiply_all(task.0.iter().cycle().skip(index).take(n).cloned())
-                        .expect("This is unrechable when `n` is zero")
+                    unsafe {
+                        self.multiply_all_unchecked(
+                            task.matrices().iter().cycle().skip(index).take(n).cloned(),
+                        )
+                    }
+                    .expect("This is unrechable when `n` is zero")
                 })
                 .collect(),
         )
     }
 
-    pub fn multiply_all(&mut self, matrices: impl Iterator<Item = Matrix<N>>) -> Option<Matrix<N>> {
+    pub fn multiply_all(&mut self, matrices: impl Iterator<Item = Matrix>) -> Option<Matrix> {
         matrices.reduce(|l, r| self.multiply(&l, &r))
     }
 
-    pub fn multiply(&mut self, a: &Matrix<N>, b: &Matrix<N>) -> Matrix<N> {
+    pub unsafe fn multiply_all_unchecked(
+        &mut self,
+        matrices: impl Iterator<Item = Matrix>,
+    ) -> Option<Matrix> {
+        matrices.reduce(|l, r| unsafe { self.multiply_unchecked(&l, &r) })
+    }
+
+    pub fn multiply(&mut self, a: &Matrix, b: &Matrix) -> Matrix {
+        assert!(a.n() == b.n(), "Matrices should have the same dimensions");
+        assert!(
+            a.n() == self.n,
+            "Matrices should be of dimmension {} but are of dimension {}",
+            self.n,
+            a.n()
+        );
+
+        unsafe { self.multiply_unchecked(a, b) }
+    }
+    pub unsafe fn multiply_unchecked(&mut self, a: &Matrix, b: &Matrix) -> Matrix {
         let _a_write_event = unsafe {
             self.command_queue.enqueue_write_buffer(
                 &mut self.a_buffer,
@@ -132,17 +144,17 @@ impl<const N: usize> Executor<N> {
         let mut execute_kernel = ExecuteKernel::new(&self.kernel);
         let kernel_event = unsafe {
             execute_kernel
-                .set_arg(&self.n)
+                .set_arg(&self.n_int)
                 .set_arg(&self.a_buffer)
                 .set_arg(&self.b_buffer)
                 .set_arg(&self.c_buffer)
-                .set_global_work_sizes(&[N / LOCAL_WORK_SIZE, N / LOCAL_WORK_SIZE])
+                .set_global_work_sizes(&[self.n / LOCAL_WORK_SIZE, self.n / LOCAL_WORK_SIZE])
                 .enqueue_nd_range(&self.command_queue)
         }
         .expect("Failed to create kernel event");
 
         let events = vec![kernel_event.get()];
-        let mut result = vec![ZERO; Self::BUFFER_SIZE];
+        let mut result = vec![ZERO; self.buffer_size];
         let _c_read_event = unsafe {
             self.command_queue.enqueue_read_buffer(
                 &self.c_buffer,
@@ -195,10 +207,10 @@ mod tests {
     fn simple_2x2() {
         let device = device();
         let context = Context::from_device(&device).unwrap();
-        let mut executor = Executor::new(context);
+        let mut executor = Executor::new(2, context);
 
-        let a = Matrix::<2>::from_vec(vec![1., 3., 2., 4.]).unwrap();
-        let b = Matrix::<2>::from_vec(vec![5., 7., 6., 8.]).unwrap();
+        let a = Matrix::from_vec(vec![1., 3., 2., 4.]).unwrap();
+        let b = Matrix::from_vec(vec![5., 7., 6., 8.]).unwrap();
 
         assert_eq!(
             executor.multiply(&a, &b),
