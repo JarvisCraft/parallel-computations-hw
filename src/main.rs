@@ -23,7 +23,7 @@ fn main() {
 
     #[cfg(feature = "random")]
     let (a, b, c) = {
-        const N: usize = 1000;
+        const N: usize = 1024;
         fn gen() -> Matrix<N> {
             use rand::prelude::*;
             let mut rng = rand::thread_rng();
