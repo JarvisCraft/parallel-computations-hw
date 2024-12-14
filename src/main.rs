@@ -22,40 +22,45 @@ fn main() {
     let context = Context::from_device(&device).expect("Failed to create context from device");
 
     #[cfg(feature = "random")]
-    let (a, b, c) = {
+    let task = {
         const N: usize = 1024;
         fn gen() -> Matrix<N> {
             use rand::prelude::*;
             let mut rng = rand::thread_rng();
             Matrix::from_vec(
                 (0..N * N)
-                    .map(|_| rng.gen_range(-100. ..100.))
-                    .map(|v| 1. / v)
+                    .map(|_| rng.gen_range(-1. ..0.))
+                    .map(|v| -v)
                     .collect(),
             )
             .unwrap()
         }
 
-        (gen(), gen(), gen())
+        Task((0..8).map(|_| gen()).collect())
     };
     #[cfg(not(feature = "random"))]
-    let (a, b, c) = {
+    let task = {
         let a = Matrix::<2>::from_vec(vec![1., 3., 2., 4.]).unwrap();
         let b = Matrix::<2>::from_vec(vec![5., 7., 6., 8.]).unwrap();
         let c = Matrix::<2>::from_vec(vec![9., 11., 10., 12.]).unwrap();
-        (a, b, c)
+        Task(vec![
+            a.clone(),
+            b.clone(),
+            c.clone(),
+            a.clone(),
+            b.clone(),
+            c.clone(),
+            a,
+            b,
+            c,
+        ])
     };
     let mut executor = Executor::new(context);
 
-    // TODO: move this to tests
-    let c_seq = seq::multiply(&a, &b);
-    debug!("C (sequential) = {c_seq:?}");
-    let c_par = executor.multiply(&a, &b);
-    debug!("C (parallel) = {c_par:?}");
-
-    let task = Task(vec![a, b, c]);
+    let _ = run(Mode::Seq, task.clone(), &mut executor);
     let (seq_solution, seq_time) = run(Mode::Seq, task.clone(), &mut executor);
-    let (par_solution, par_time) = run(Mode::Par, task, &mut executor);
+    let _ = run(Mode::Par, task.clone(), &mut executor);
+    let (par_solution, par_time) = run(Mode::Par, task.clone(), &mut executor);
 
     info!("Sequential time: {seq_time:?}");
     info!("Sequential sol_: {:?}", seq_solution.0[1][3]);
