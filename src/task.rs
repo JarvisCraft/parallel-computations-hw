@@ -1,3 +1,5 @@
+use std::ops::{Index, IndexMut};
+
 use crate::types::{Value, ONE, ZERO};
 
 /// Column-major matrix.
@@ -49,6 +51,18 @@ impl<const N: usize> TryFrom<Vec<Value>> for Matrix<N> {
 
     fn try_from(value: Vec<Value>) -> Result<Self, Self::Error> {
         Self::from_vec(value).ok_or(())
+    }
+}
+impl<const N: usize> Index<usize> for Matrix<N> {
+    type Output = Value;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
+    }
+}
+impl<const N: usize> IndexMut<usize> for Matrix<N> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.0[index]
     }
 }
 

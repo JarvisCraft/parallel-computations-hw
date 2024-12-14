@@ -20,24 +20,9 @@ const COMMAND_QUEUE_FLAGS: cl_command_queue_properties =
 #[cfg(not(feature = "profiling"))]
 const COMMAND_QUEUE_FLAGS: cl_command_queue_properties = 0;
 
-const PROGRAM_SOURCE: &str = r#"
-kernel void multiply(
-    const int N,
-    const global float* A,
-    const global float* B,
-    global float* C
-) {
-    const int globalRow = get_global_id(0);
-    const int globalCol = get_global_id(1);
-
-    float value = 0.;
-    for (int k = 0; k < N; k++) {
-        value += A[k * N + globalRow] * B[globalCol * N + k];
-    }
-
-    C[globalCol * N + globalRow] = value;
-}"#;
+const PROGRAM_SOURCE: &str = include_str!("multiply1.cl");
 const KERNEL_NAME: &str = "multiply";
+const LOCAL_WORK_SIZE: usize = 1;
 
 pub struct Executor<const N: usize> {
     // context: Context,
@@ -58,8 +43,12 @@ impl<const N: usize> Executor<N> {
         let command_queue =
             CommandQueue::create_default_with_properties(&context, COMMAND_QUEUE_FLAGS, 0)
                 .expect("Failed to create queue");
-        let program = Program::create_and_build_from_source(&context, PROGRAM_SOURCE, "")
-            .expect("Failed to crate program");
+        let program = Program::create_and_build_from_source(
+            &context,
+            PROGRAM_SOURCE,
+            opencl3::program::CL_STD_3_0,
+        )
+        .expect("Failed to create program");
         let kernel = Kernel::create(&program, KERNEL_NAME).expect("Failed to create kernel");
 
         let a_buffer: Buffer<f32> = unsafe {
@@ -147,8 +136,8 @@ impl<const N: usize> Executor<N> {
                 .set_arg(&self.a_buffer)
                 .set_arg(&self.b_buffer)
                 .set_arg(&self.c_buffer)
-                .set_global_work_size(N)
-                .set_global_work_size(N)
+                .set_global_work_sizes(&[N / LOCAL_WORK_SIZE, N / LOCAL_WORK_SIZE])
+                .set_local_work_sizes(&[LOCAL_WORK_SIZE, LOCAL_WORK_SIZE])
                 .enqueue_nd_range(&self.command_queue)
         }
         .expect("Failed to create kernel event");

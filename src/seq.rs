@@ -1,3 +1,5 @@
+use rayon::prelude::*;
+
 use crate::{
     task::{Matrix, Solution, Task},
     types::ZERO,
@@ -25,6 +27,7 @@ pub fn solve<const N: usize>(task: Task<N>) -> Solution<N> {
     let n = task.0.len();
     Solution(
         (0..n)
+            .into_par_iter()
             .map(|index| {
                 task.0
                     .iter()

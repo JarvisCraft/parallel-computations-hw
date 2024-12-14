@@ -5,7 +5,7 @@ use opencl3::{
     device::{get_all_devices, Device, CL_DEVICE_TYPE_GPU},
 };
 use par::Executor;
-use task::{Matrix, Task};
+use task::{Matrix, Solution, Task};
 use tracing::{debug, info};
 
 mod cmd;
@@ -54,11 +54,13 @@ fn main() {
     debug!("C (parallel) = {c_par:?}");
 
     let task = Task(vec![a, b, c]);
-    let seq_time = run(Mode::Seq, task.clone(), &mut executor);
-    let par_time = run(Mode::Par, task, &mut executor);
+    let (seq_solution, seq_time) = run(Mode::Seq, task.clone(), &mut executor);
+    let (par_solution, par_time) = run(Mode::Par, task, &mut executor);
 
     info!("Sequential time: {seq_time:?}");
+    info!("Sequential sol_: {:?}", seq_solution.0[1][3]);
     info!("  Parallel time: {par_time:?}");
+    info!("  Parallel sol_: {:?}", par_solution.0[1][3]);
 }
 
 fn pick_device() -> Option<Device> {
@@ -71,17 +73,23 @@ fn pick_device() -> Option<Device> {
         .map(|id| Device::new(*id))
 }
 
-fn run<const N: usize>(mode: Mode, task: Task<N>, executor: &mut Executor<N>) -> Duration {
+fn run<const N: usize>(
+    mode: Mode,
+    task: Task<N>,
+    executor: &mut Executor<N>,
+) -> (Solution<N>, Duration) {
+    info!("Running execution in {mode:?} mode");
     let begin = time::Instant::now();
-    let result = match mode {
+    let solution = match mode {
         Mode::Seq => seq::solve(task),
         Mode::Par => executor.solve(task),
     };
     let end = time::Instant::now();
 
-    debug!("[{mode:?}] Result = {result:?}");
+    debug!("[{mode:?}] Result = {solution:?}");
+    info!("Completed execution in {mode:?} mode");
 
-    end - begin
+    (solution, end - begin)
 }
 
 #[derive(Debug)]
