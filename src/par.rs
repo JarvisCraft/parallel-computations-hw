@@ -20,9 +20,10 @@ const COMMAND_QUEUE_FLAGS: cl_command_queue_properties =
 #[cfg(not(feature = "profiling"))]
 const COMMAND_QUEUE_FLAGS: cl_command_queue_properties = 0;
 
-const PROGRAM_SOURCE: &str = include_str!("multiply2.cl");
+const PROGRAM_SOURCE: &str = include_str!("multiply3.cl");
 const KERNEL_NAME: &str = "multiply";
 const LOCAL_WORK_SIZE: usize = 32;
+const WORK_PER_THREAD: usize = 8;
 
 pub struct Executor {
     // context: Context,
@@ -148,8 +149,8 @@ impl Executor {
                 .set_arg(&self.a_buffer)
                 .set_arg(&self.b_buffer)
                 .set_arg(&self.c_buffer)
-                .set_global_work_sizes(&[self.n, self.n])
-                .set_local_work_sizes(&[LOCAL_WORK_SIZE, LOCAL_WORK_SIZE])
+                .set_global_work_sizes(&[self.n, self.n / WORK_PER_THREAD])
+                .set_local_work_sizes(&[LOCAL_WORK_SIZE, LOCAL_WORK_SIZE / WORK_PER_THREAD])
                 .enqueue_nd_range(&self.command_queue)
         }
         .expect("Failed to create kernel event");

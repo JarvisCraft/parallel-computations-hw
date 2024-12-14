@@ -1,4 +1,4 @@
-const TS = 32;
+const int TS = 32;
 
 kernel void multiply(
     const int N,
