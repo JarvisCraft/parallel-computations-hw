@@ -137,7 +137,6 @@ impl<const N: usize> Executor<N> {
                 .set_arg(&self.b_buffer)
                 .set_arg(&self.c_buffer)
                 .set_global_work_sizes(&[N / LOCAL_WORK_SIZE, N / LOCAL_WORK_SIZE])
-                .set_local_work_sizes(&[LOCAL_WORK_SIZE, LOCAL_WORK_SIZE])
                 .enqueue_nd_range(&self.command_queue)
         }
         .expect("Failed to create kernel event");
