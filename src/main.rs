@@ -24,7 +24,7 @@ fn main() {
 
     #[cfg(feature = "random")]
     let (n, task) = {
-        const N: usize = 256;
+        const N: usize = 512;
         fn gen() -> Matrix {
             use rand::prelude::*;
             let mut rng = rand::thread_rng();
@@ -63,17 +63,26 @@ fn main() {
     let mut executor = Executor::new(n, context);
 
     let (seq_solution, seq_time) = run(Mode::Seq, &task, &mut executor);
+    let (seq_par_solution, seq_par_time) = run(Mode::SeqPar, &task, &mut executor);
     let (par_solution, par_time) = run(Mode::Par, &task, &mut executor);
 
-    info!("Sequential time: {seq_time:?}");
+    info!(" Sequential time: {seq_time:?}");
     info!(
-        "Sequential sol_: {} {:?}",
+        " Sequential sol_: {} {:?}",
         seq_solution.0.len(),
         seq_solution.0[1][3]
     );
-    info!("  Parallel time: {par_time:?}");
+
+    info!("SeqParallel time: {seq_par_time:?}");
     info!(
-        "  Parallel sol_: {} {:?}",
+        "SeqParallel sol_: {} {:?}",
+        seq_par_solution.0.len(),
+        seq_par_solution.0[1][3]
+    );
+
+    info!("   Parallel time: {par_time:?}");
+    info!(
+        "   Parallel sol_: {} {:?}",
         par_solution.0.len(),
         par_solution.0[1][3]
     );
@@ -94,6 +103,7 @@ fn run(mode: Mode, task: &Task, executor: &mut Executor) -> (Solution, Duration)
     let begin = time::Instant::now();
     let solution = match mode {
         Mode::Seq => seq::solve(task),
+        Mode::SeqPar => seq::solve_par(task),
         Mode::Par => executor.solve(task),
     };
     let end = time::Instant::now();
@@ -107,5 +117,6 @@ fn run(mode: Mode, task: &Task, executor: &mut Executor) -> (Solution, Duration)
 #[derive(Debug)]
 enum Mode {
     Seq,
+    SeqPar,
     Par,
 }

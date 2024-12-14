@@ -31,21 +31,33 @@ pub fn multiply(a: &Matrix, b: &Matrix) -> Matrix {
 
 pub fn solve(task: &Task) -> Solution {
     let n = task.matrices().len();
+
     Solution(
         (0..n)
-            .into_par_iter()
             .map(|index| {
-                task.matrices()
-                    .iter()
-                    .cycle()
-                    .skip(index)
-                    .take(n)
-                    .cloned()
-                    .reduce(|l, r| multiply(&l, &r))
+                multiply_all(task.matrices().iter().cycle().skip(index).take(n).cloned())
                     .expect("This is unrechable when `n` is zero")
             })
             .collect(),
     )
+}
+
+pub fn solve_par(task: &Task) -> Solution {
+    let n = task.matrices().len();
+
+    Solution(
+        (0..n)
+            .into_par_iter()
+            .map(|index| {
+                multiply_all(task.matrices().iter().cycle().skip(index).take(n).cloned())
+                    .expect("This is unrechable when `n` is zero")
+            })
+            .collect(),
+    )
+}
+
+pub fn multiply_all(matrices: impl Iterator<Item = Matrix>) -> Option<Matrix> {
+    matrices.reduce(|l, r| multiply(&l, &r))
 }
 
 #[cfg(test)]
