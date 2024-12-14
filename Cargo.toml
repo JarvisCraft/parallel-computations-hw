@@ -11,3 +11,7 @@ publish = false
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
 opencl3 = "0.9.5"
+rand = { version = "0.8.5", optional = true }
+
+[features]
+random = ["dep:rand"]

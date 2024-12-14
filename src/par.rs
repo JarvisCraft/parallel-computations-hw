@@ -162,6 +162,7 @@ impl<const N: usize> Executor<N> {
         }
         .expect("Failed to wait for read event");
 
+        /* // Time measurement
         let start_time = kernel_event
             .profiling_command_start()
             .expect("Failed to get start time");
@@ -169,6 +170,7 @@ impl<const N: usize> Executor<N> {
             .profiling_command_end()
             .expect("Failed to get end time");
         println!("Took {} ns", end_time - start_time);
+        */
 
         result
             .into_boxed_slice()

@@ -1,4 +1,4 @@
-use std::time;
+use std::time::{self, Duration};
 
 use opencl3::{
     context::Context,
@@ -23,10 +23,24 @@ fn main() {
     println!("Device: {device:?}");
     let context = Context::from_device(&device).expect("Failed to create context from device");
 
-    let a = Matrix::<2>::from_vec(vec![1., 3., 2., 4.]).unwrap();
-    let b = Matrix::<2>::from_vec(vec![5., 7., 6., 8.]).unwrap();
-    let c = Matrix::<2>::from_vec(vec![9., 11., 10., 12.]).unwrap();
+    #[cfg(feature = "random")]
+    let (a, b, c) = {
+        const N: usize = 10;
+        fn gen() -> Matrix<N> {
+            use rand::prelude::*;
+            let mut rng = rand::thread_rng();
+            Matrix::from_vec((0..N * N).map(|_| rng.gen_range(-100. ..100.)).collect()).unwrap()
+        }
 
+        (gen(), gen(), gen())
+    };
+    #[cfg(not(feature = "random"))]
+    let (a, b, c) = {
+        let a = Matrix::<2>::from_vec(vec![1., 3., 2., 4.]).unwrap();
+        let b = Matrix::<2>::from_vec(vec![5., 7., 6., 8.]).unwrap();
+        let c = Matrix::<2>::from_vec(vec![9., 11., 10., 12.]).unwrap();
+        (a, b, c)
+    };
     let mut executor = Executor::new(context);
 
     let c_seq = seq::multiply(&a, &b);
@@ -35,11 +49,14 @@ fn main() {
     println!("C (parallel) = {c_par:?}");
 
     let task = Task(vec![a, b, c]);
-    run(Mode::Seq, task.clone(), &mut executor);
-    run(Mode::Par, task, &mut executor);
+    let seq_time = run(Mode::Seq, task.clone(), &mut executor);
+    let par_time = run(Mode::Par, task, &mut executor);
+
+    println!("Sequential time: {seq_time:?}");
+    println!("  Parallel time: {par_time:?}");
 }
 
-fn run<const N: usize>(mode: Mode, task: Task<N>, executor: &mut Executor<N>) {
+fn run<const N: usize>(mode: Mode, task: Task<N>, executor: &mut Executor<N>) -> Duration {
     let begin = time::Instant::now();
     let result = match mode {
         Mode::Seq => seq::solve(task),
@@ -47,7 +64,9 @@ fn run<const N: usize>(mode: Mode, task: Task<N>, executor: &mut Executor<N>) {
     };
     let end = time::Instant::now();
 
-    println!("[{mode:?}] [{:?}] Result = {result:?}", end - begin);
+    println!("[{mode:?}] Result = {result:?}");
+
+    end - begin
 }
 
 #[derive(Debug)]
