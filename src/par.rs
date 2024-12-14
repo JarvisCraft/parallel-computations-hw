@@ -6,7 +6,7 @@ use opencl3::{
     kernel::{ExecuteKernel, Kernel},
     memory::{Buffer, CL_MEM_READ_ONLY, CL_MEM_READ_WRITE},
     program::Program,
-    types::{cl_float, cl_int, CL_BLOCKING, CL_NON_BLOCKING},
+    types::{cl_command_queue_properties, cl_float, cl_int, CL_BLOCKING},
 };
 
 use crate::{
@@ -14,7 +14,11 @@ use crate::{
     types::ZERO,
 };
 
-const COMMAND_QUEUE_FLAGS: u64 = opencl3::command_queue::CL_QUEUE_PROFILING_ENABLE;
+#[cfg(feature = "profiling")]
+const COMMAND_QUEUE_FLAGS: cl_command_queue_properties =
+    opencl3::command_queue::CL_QUEUE_PROFILING_ENABLE;
+#[cfg(not(feature = "profiling"))]
+const COMMAND_QUEUE_FLAGS: cl_command_queue_properties = 0;
 
 const PROGRAM_SOURCE: &str = r#"
 kernel void multiply(
@@ -36,9 +40,9 @@ kernel void multiply(
 const KERNEL_NAME: &str = "multiply";
 
 pub struct Executor<const N: usize> {
-    context: Context,
+    // context: Context,
     command_queue: CommandQueue,
-    program: Program,
+    // program: Program,
     kernel: Kernel,
     n: cl_int,
     a_buffer: Buffer<cl_float>,
@@ -87,9 +91,9 @@ impl<const N: usize> Executor<N> {
         .expect("Failed to create buffer for matrix B");
 
         Self {
-            context,
+            // context,
             command_queue,
-            program,
+            // program,
             kernel,
             n,
             a_buffer,
@@ -162,15 +166,20 @@ impl<const N: usize> Executor<N> {
         }
         .expect("Failed to wait for read event");
 
-        /* // Time measurement
-        let start_time = kernel_event
-            .profiling_command_start()
-            .expect("Failed to get start time");
-        let end_time = kernel_event
-            .profiling_command_end()
-            .expect("Failed to get end time");
-        println!("Took {} ns", end_time - start_time);
-        */
+        #[cfg(feature = "profiling")]
+        {
+            // Note: this will take time in execution time measurement.
+            let start_time = kernel_event
+                .profiling_command_start()
+                .expect("Failed to get start time");
+            let end_time = kernel_event
+                .profiling_command_end()
+                .expect("Failed to get end time");
+            tracing::info!(
+                "GPU task took {:?} ns",
+                std::time::Duration::from_nanos(end_time - start_time)
+            );
+        }
 
         result
             .into_boxed_slice()

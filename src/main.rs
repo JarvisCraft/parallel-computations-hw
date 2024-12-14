@@ -6,6 +6,7 @@ use opencl3::{
 };
 use par::Executor;
 use task::{Matrix, Task};
+use tracing::{debug, info};
 
 mod cmd;
 mod par;
@@ -14,22 +15,25 @@ mod task;
 mod types;
 
 fn main() {
-    let device = Device::new(
-        *get_all_devices(CL_DEVICE_TYPE_GPU)
-            .expect("Failed to discover GPU devices")
-            .first()
-            .expect("There is no avalable GPU device"),
-    );
-    println!("Device: {device:?}");
+    tracing_subscriber::fmt::init();
+
+    let device = pick_device().expect("There is no available GPU device");
+
     let context = Context::from_device(&device).expect("Failed to create context from device");
 
     #[cfg(feature = "random")]
     let (a, b, c) = {
-        const N: usize = 10;
+        const N: usize = 1000;
         fn gen() -> Matrix<N> {
             use rand::prelude::*;
             let mut rng = rand::thread_rng();
-            Matrix::from_vec((0..N * N).map(|_| rng.gen_range(-100. ..100.)).collect()).unwrap()
+            Matrix::from_vec(
+                (0..N * N)
+                    .map(|_| rng.gen_range(-100. ..100.))
+                    .map(|v| 1. / v)
+                    .collect(),
+            )
+            .unwrap()
         }
 
         (gen(), gen(), gen())
@@ -43,17 +47,28 @@ fn main() {
     };
     let mut executor = Executor::new(context);
 
+    // TODO: move this to tests
     let c_seq = seq::multiply(&a, &b);
-    println!("C (sequential) = {c_seq:?}");
+    debug!("C (sequential) = {c_seq:?}");
     let c_par = executor.multiply(&a, &b);
-    println!("C (parallel) = {c_par:?}");
+    debug!("C (parallel) = {c_par:?}");
 
     let task = Task(vec![a, b, c]);
     let seq_time = run(Mode::Seq, task.clone(), &mut executor);
     let par_time = run(Mode::Par, task, &mut executor);
 
-    println!("Sequential time: {seq_time:?}");
-    println!("  Parallel time: {par_time:?}");
+    info!("Sequential time: {seq_time:?}");
+    info!("  Parallel time: {par_time:?}");
+}
+
+fn pick_device() -> Option<Device> {
+    let gpu_devices = get_all_devices(CL_DEVICE_TYPE_GPU).expect("Failed to discover GPU devices");
+    info!("Avalable GPU devices: {gpu_devices:?}");
+
+    get_all_devices(CL_DEVICE_TYPE_GPU)
+        .expect("Failed to discover GPU devices")
+        .first()
+        .map(|id| Device::new(*id))
 }
 
 fn run<const N: usize>(mode: Mode, task: Task<N>, executor: &mut Executor<N>) -> Duration {
@@ -64,7 +79,7 @@ fn run<const N: usize>(mode: Mode, task: Task<N>, executor: &mut Executor<N>) ->
     };
     let end = time::Instant::now();
 
-    println!("[{mode:?}] Result = {result:?}");
+    debug!("[{mode:?}] Result = {result:?}");
 
     end - begin
 }
