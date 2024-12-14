@@ -6,8 +6,8 @@ kernel void multiply(
     const global float* B,
     global float* C
 ) {
-    const int row = get_global_id(0);
-    const int col = get_global_id(1);
+    const int row = get_local_id(0);
+    const int col = get_local_id(1);
     const int globalRow = TS * get_group_id(0) + row;
     const int globalCol = TS * get_group_id(1) + col;
 

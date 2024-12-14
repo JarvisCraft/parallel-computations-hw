@@ -176,3 +176,34 @@ impl<const N: usize> Executor<N> {
             .expect("Dimensions should match")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use opencl3::device::{get_all_devices, Device, CL_DEVICE_TYPE_GPU};
+
+    use super::*;
+
+    fn device() -> Device {
+        Device::new(
+            *get_all_devices(CL_DEVICE_TYPE_GPU)
+                .unwrap()
+                .first()
+                .unwrap(),
+        )
+    }
+
+    #[test]
+    fn simple_2x2() {
+        let device = device();
+        let context = Context::from_device(&device).unwrap();
+        let mut executor = Executor::new(context);
+
+        let a = Matrix::<2>::from_vec(vec![1., 3., 2., 4.]).unwrap();
+        let b = Matrix::<2>::from_vec(vec![5., 7., 6., 8.]).unwrap();
+
+        assert_eq!(
+            executor.multiply(&a, &b),
+            Matrix::from_vec(vec![19., 43., 22., 50.]).unwrap(),
+        );
+    }
+}

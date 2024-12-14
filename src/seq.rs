@@ -41,3 +41,19 @@ pub fn solve<const N: usize>(task: Task<N>) -> Solution<N> {
             .collect(),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn simple_2x2() {
+        let a = Matrix::<2>::from_vec(vec![1., 3., 2., 4.]).unwrap();
+        let b = Matrix::<2>::from_vec(vec![5., 7., 6., 8.]).unwrap();
+
+        assert_eq!(
+            multiply(&a, &b),
+            Matrix::from_vec(vec![19., 43., 22., 50.]).unwrap(),
+        );
+    }
+}
