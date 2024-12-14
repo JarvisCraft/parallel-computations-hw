@@ -1,5 +1,8 @@
+mod config;
+
 use std::ptr;
 
+use self::config::WorkSize;
 use opencl3::{
     command_queue::CommandQueue,
     context::Context,
@@ -20,12 +23,10 @@ const COMMAND_QUEUE_FLAGS: cl_command_queue_properties =
 #[cfg(not(feature = "profiling"))]
 const COMMAND_QUEUE_FLAGS: cl_command_queue_properties = 0;
 
-const PROGRAM_SOURCE: &str = include_str!("multiply3.cl");
 const KERNEL_NAME: &str = "multiply";
-const LOCAL_WORK_SIZE: usize = 32;
-const WORK_PER_THREAD: usize = 8;
 
 pub struct Executor {
+    work_size: WorkSize,
     // context: Context,
     command_queue: CommandQueue,
     // program: Program,
@@ -41,13 +42,14 @@ impl Executor {
     pub fn new(n: usize, context: Context) -> Self {
         let buffer_size = n.checked_mul(n).expect("`n` is too big");
         let n_int = cl_int::try_from(n).expect("Failed to convert `n` to cl_int");
+        let config = if n % 32 == 0 { config::V3 } else { config::V1 };
 
         let command_queue =
             CommandQueue::create_default_with_properties(&context, COMMAND_QUEUE_FLAGS, 0)
                 .expect("Failed to create queue");
         let program = Program::create_and_build_from_source(
             &context,
-            PROGRAM_SOURCE,
+            config.src,
             opencl3::program::CL_STD_3_0,
         )
         .expect("Failed to create program");
@@ -67,6 +69,7 @@ impl Executor {
         .expect("Failed to create buffer for matrix B");
 
         Self {
+            work_size: config.work_size,
             // context,
             command_queue,
             // program,
@@ -149,9 +152,13 @@ impl Executor {
                 .set_arg(&self.a_buffer)
                 .set_arg(&self.b_buffer)
                 .set_arg(&self.c_buffer)
-                .set_global_work_sizes(&[self.n, self.n / WORK_PER_THREAD])
-                .set_local_work_sizes(&[LOCAL_WORK_SIZE, LOCAL_WORK_SIZE / WORK_PER_THREAD])
-                .enqueue_nd_range(&self.command_queue)
+                .set_global_work_sizes(&[self.n, self.n / self.work_size.per_thread]);
+            if let Some(local) = self.work_size.local {
+                execute_kernel
+                    .set_local_work_sizes(&[local.get(), local.get() / self.work_size.per_thread]);
+            }
+
+            execute_kernel.enqueue_nd_range(&self.command_queue)
         }
         .expect("Failed to create kernel event");
 
