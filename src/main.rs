@@ -24,7 +24,7 @@ fn main() {
 
     #[cfg(feature = "random")]
     let (n, task) = {
-        const N: usize = 512;
+        const N: usize = 1024;
         fn gen() -> Matrix {
             use rand::prelude::*;
             let mut rng = rand::thread_rng();
@@ -37,7 +37,7 @@ fn main() {
             .unwrap()
         }
 
-        (N, Task::from_vec((0..8).map(|_| gen()).collect()).unwrap())
+        (N, Task::from_vec((0..16).map(|_| gen()).collect()).unwrap())
     };
     #[cfg(not(feature = "random"))]
     let (n, task) = {
@@ -65,26 +65,34 @@ fn main() {
     let (seq_solution, seq_time) = run(Mode::Seq, &task, &mut executor);
     let (seq_par_solution, seq_par_time) = run(Mode::SeqPar, &task, &mut executor);
     let (par_solution, par_time) = run(Mode::Par, &task, &mut executor);
+    let (par_mem_solution, par_mem_time) = run(Mode::ParMem, &task, &mut executor);
 
     info!(" Sequential time: {seq_time:?}");
     info!(
-        " Sequential sol_: {} {:?}",
+        " Sequential sol_: #{} {:?}",
         seq_solution.0.len(),
         seq_solution.0[1][3]
     );
 
     info!("SeqParallel time: {seq_par_time:?}");
     info!(
-        "SeqParallel sol_: {} {:?}",
+        "SeqParallel sol_: #{} {:?}",
         seq_par_solution.0.len(),
         seq_par_solution.0[1][3]
     );
 
     info!("   Parallel time: {par_time:?}");
     info!(
-        "   Parallel sol_: {} {:?}",
+        "   Parallel sol_: #{} {:?}",
         par_solution.0.len(),
         par_solution.0[1][3]
+    );
+
+    info!("MemParallel time: {par_mem_time:?}");
+    info!(
+        "MemParallel sol_: #{} {:?}",
+        par_mem_solution.0.len(),
+        par_mem_solution.0[1][3]
     );
 }
 
@@ -105,6 +113,7 @@ fn run(mode: Mode, task: &Task, executor: &mut Executor) -> (Solution, Duration)
         Mode::Seq => seq::solve(task),
         Mode::SeqPar => seq::solve_par(task),
         Mode::Par => executor.solve(task),
+        Mode::ParMem => executor.solve_memoizing(task),
     };
     let end = time::Instant::now();
 
@@ -119,4 +128,5 @@ enum Mode {
     Seq,
     SeqPar,
     Par,
+    ParMem,
 }

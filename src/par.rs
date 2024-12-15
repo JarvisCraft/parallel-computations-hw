@@ -84,7 +84,10 @@ impl Executor {
     }
 
     pub fn solve(&mut self, task: &Task) -> Solution {
-        assert!(task.n() == self.n, "Task simension shoud match this d");
+        assert!(
+            task.n() == self.n,
+            "Task dimension shoud match this solver's one"
+        );
         let n = task.matrices().len();
 
         Solution(
@@ -96,6 +99,48 @@ impl Executor {
                         )
                     }
                     .expect("This is unrechable when `n` is zero")
+                })
+                .collect(),
+        )
+    }
+
+    pub fn solve_memoizing(&mut self, task: &Task) -> Solution {
+        assert!(
+            task.n() == self.n,
+            "Task dimension shoud match this solver's one"
+        );
+        let n = task.matrices().len();
+        let Some(first) = task.matrices().first() else {
+            return Solution(vec![]);
+        };
+
+        let mut left_muls = Vec::with_capacity(n);
+        left_muls.push(first.clone());
+        for index in 0..(n - 1) {
+            left_muls.push(unsafe {
+                self.multiply_unchecked(&left_muls[index], &task.matrices()[index + 1])
+            });
+        }
+
+        let last = task.matrices().last().unwrap();
+        let mut right_muls = Vec::with_capacity(n - 1);
+        right_muls.push(last.clone());
+        for index in 0..n - 2 {
+            right_muls.push(unsafe {
+                self.multiply_unchecked(&task.matrices()[n - index - 2], &right_muls[index])
+            })
+        }
+
+        Solution(
+            left_muls
+                .into_iter()
+                .zip(right_muls.iter().rev().map(Some))
+                .map(|(left, right)| {
+                    if let Some(right) = right {
+                        unsafe { self.multiply_unchecked(&left, right) }
+                    } else {
+                        left
+                    }
                 })
                 .collect(),
         )

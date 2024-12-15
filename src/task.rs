@@ -1,6 +1,9 @@
 use std::ops::{Index, IndexMut};
 
-use crate::{types::Value, util::sqrt};
+use crate::{
+    types::{Value, ZERO},
+    util::sqrt,
+};
 
 /// Column-major matrix.
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
@@ -11,6 +14,15 @@ pub struct Matrix {
 impl Matrix {
     pub const fn n(&self) -> usize {
         self.n
+    }
+
+    pub fn zero(n: usize) -> Self {
+        let size = n.checked_mul(n).expect("Dimension is too big");
+
+        Self {
+            n,
+            values: vec![ZERO; size].into_boxed_slice(),
+        }
     }
 
     pub fn as_slice(&self) -> &[Value] {
