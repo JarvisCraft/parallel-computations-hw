@@ -16,21 +16,8 @@ impl Matrix {
         self.n
     }
 
-    pub fn zero(n: usize) -> Self {
-        let size = n.checked_mul(n).expect("Dimension is too big");
-
-        Self {
-            n,
-            values: vec![ZERO; size].into_boxed_slice(),
-        }
-    }
-
     pub fn as_slice(&self) -> &[Value] {
         self.values.as_ref()
-    }
-
-    pub const fn len(&self) -> usize {
-        self.values.len()
     }
 
     pub fn from_vec(vec: Vec<Value>) -> Option<Self> {

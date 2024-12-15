@@ -2,14 +2,14 @@ use std::num::NonZeroUsize;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Config {
-    pub src: &'static str,
-    pub work_size: WorkSize,
+    pub(super) src: &'static str,
+    pub(super) work_size: WorkSize,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct WorkSize {
-    pub local: Option<NonZeroUsize>,
-    pub per_thread: NonZeroUsize,
+    pub(super) local: Option<NonZeroUsize>,
+    pub(super) per_thread: NonZeroUsize,
 }
 
 pub const V1: Config = Config {

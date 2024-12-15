@@ -1,11 +1,14 @@
-mod config;
+pub mod config;
 
-use std::ptr;
+use std::iter;
+use std::{num::NonZeroUsize, ptr};
 
+use self::config::Config;
 use self::config::WorkSize;
 use opencl3::{
     command_queue::CommandQueue,
     context::Context,
+    error_codes::ClError,
     kernel::{ExecuteKernel, Kernel},
     memory::{Buffer, CL_MEM_READ_ONLY, CL_MEM_READ_WRITE},
     program::Program,
@@ -25,6 +28,20 @@ const COMMAND_QUEUE_FLAGS: cl_command_queue_properties = 0;
 
 const KERNEL_NAME: &str = "multiply";
 
+#[derive(thiserror::Error, Debug)]
+pub enum NewExecutorError {
+    #[error("dimension {0} is too big")]
+    TooBig(usize),
+    #[error("dimension {0} cannot be converted to OpenCL int")]
+    InconvertibleN(usize),
+    #[error("dimension should be multiple of {0} but is {1}")]
+    UnsupportedSize(NonZeroUsize, usize),
+    #[error("OpenCL failed: {0}")]
+    ClError(#[from] ClError),
+    #[error("failed to compile OpenCL program: {0}")]
+    Compile(String),
+}
+
 pub struct Executor {
     work_size: WorkSize,
     // context: Context,
@@ -39,36 +56,39 @@ pub struct Executor {
     c_buffer: Buffer<cl_float>,
 }
 impl Executor {
-    pub fn new(n: usize, context: Context) -> Self {
-        let buffer_size = n.checked_mul(n).expect("`n` is too big");
-        let n_int = cl_int::try_from(n).expect("Failed to convert `n` to cl_int");
-        let config = if n % 32 == 0 { config::V3 } else { config::V1 };
+    pub fn new(n: usize, context: &Context, config: Config) -> Result<Self, NewExecutorError> {
+        let buffer_size = n.checked_mul(n).ok_or(NewExecutorError::TooBig(n))?;
+        let n_int = cl_int::try_from(n).map_err(|_| NewExecutorError::InconvertibleN(n))?;
+
+        let local_size = config
+            .work_size
+            .local
+            .unwrap_or(const { NonZeroUsize::new(1).unwrap() });
+        if n % local_size != 0 {
+            return Err(NewExecutorError::UnsupportedSize(local_size, n));
+        }
 
         let command_queue =
-            CommandQueue::create_default_with_properties(&context, COMMAND_QUEUE_FLAGS, 0)
-                .expect("Failed to create queue");
+            CommandQueue::create_default_with_properties(context, COMMAND_QUEUE_FLAGS, 0)?;
         let program = Program::create_and_build_from_source(
-            &context,
+            context,
             config.src,
             opencl3::program::CL_STD_3_0,
         )
-        .expect("Failed to create program");
-        let kernel = Kernel::create(&program, KERNEL_NAME).expect("Failed to create kernel");
+        .map_err(NewExecutorError::Compile)?;
+        let kernel = Kernel::create(&program, KERNEL_NAME)?;
 
         let a_buffer: Buffer<f32> = unsafe {
-            Buffer::<cl_float>::create(&context, CL_MEM_READ_ONLY, buffer_size, ptr::null_mut())
-        }
-        .expect("Failed to create buffer for matrix A");
+            Buffer::<cl_float>::create(context, CL_MEM_READ_ONLY, buffer_size, ptr::null_mut())
+        }?;
         let b_buffer = unsafe {
-            Buffer::<cl_float>::create(&context, CL_MEM_READ_ONLY, buffer_size, ptr::null_mut())
-        }
-        .expect("Failed to create buffer for matrix B");
+            Buffer::<cl_float>::create(context, CL_MEM_READ_ONLY, buffer_size, ptr::null_mut())
+        }?;
         let c_buffer = unsafe {
-            Buffer::<cl_float>::create(&context, CL_MEM_READ_WRITE, buffer_size, ptr::null_mut())
-        }
-        .expect("Failed to create buffer for matrix B");
+            Buffer::<cl_float>::create(context, CL_MEM_READ_WRITE, buffer_size, ptr::null_mut())
+        }?;
 
-        Self {
+        Ok(Self {
             work_size: config.work_size,
             // context,
             command_queue,
@@ -80,7 +100,7 @@ impl Executor {
             a_buffer,
             b_buffer,
             c_buffer,
-        }
+        })
     }
 
     pub fn solve(&mut self, task: &Task) -> Solution {
@@ -132,17 +152,20 @@ impl Executor {
         }
 
         Solution(
-            left_muls
-                .into_iter()
-                .zip(right_muls.iter().rev().map(Some))
-                .map(|(left, right)| {
-                    if let Some(right) = right {
-                        unsafe { self.multiply_unchecked(&left, right) }
-                    } else {
-                        left
-                    }
-                })
-                .collect(),
+            // Start with `left_muls[n-1]` which is actually `A[0] * ... * A[n-1]`,
+            //  then produce multiplications `right_muls[n-1 - (1..n)] * left_muls[1..n]`.
+            iter::zip(
+                left_muls.into_iter().cycle().skip(n - 1).take(n),
+                [None].into_iter().chain(right_muls.iter().rev().map(Some)),
+            )
+            .map(|(left, right)| -> Matrix {
+                if let Some(right) = right {
+                    unsafe { self.multiply_unchecked(right, &left) }
+                } else {
+                    left
+                }
+            })
+            .collect(),
         )
     }
 
@@ -261,7 +284,7 @@ mod tests {
     fn simple_2x2() {
         let device = device();
         let context = Context::from_device(&device).unwrap();
-        let mut executor = Executor::new(2, context);
+        let mut executor = Executor::new(2, &context, config::V1).unwrap();
 
         let a = Matrix::from_vec(vec![1., 3., 2., 4.]).unwrap();
         let b = Matrix::from_vec(vec![5., 7., 6., 8.]).unwrap();
