@@ -1,18 +1,17 @@
 use std::{
     collections::BTreeSet,
-    time::{self, Duration, Instant},
+    time::{Duration, Instant},
 };
 
 use clap::Parser;
 use cmd::Cmd;
-use comfy_table::{Attribute, Color};
+use comfy_table::Color;
 use opencl3::{
     context::Context,
     device::{get_all_devices, Device, CL_DEVICE_TYPE_GPU},
 };
-use par::Executor;
 use task::{Matrix, Solution, Task};
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 mod cmd;
 mod par;
@@ -34,45 +33,40 @@ fn main() {
     let device = pick_device().expect("There is no available GPU device");
     let context = Context::from_device(&device).expect("Failed to create context from device");
 
-    let (n, task) = if sample {
+    let task = if sample {
         let a = Matrix::from_vec(vec![1., 3., 2., 4.]).unwrap();
         let b = Matrix::from_vec(vec![5., 7., 6., 8.]).unwrap();
         let c = Matrix::from_vec(vec![9., 11., 10., 12.]).unwrap();
-        (
-            2,
-            Task::from_vec(vec![
-                a.clone(),
-                b.clone(),
-                c.clone(),
-                a.clone(),
-                b.clone(),
-                c.clone(),
-                a,
-                b,
-                c,
-            ])
-            .unwrap(),
-        )
+
+        Task::from_vec(vec![
+            a.clone(),
+            b.clone(),
+            c.clone(),
+            a.clone(),
+            b.clone(),
+            c.clone(),
+            a,
+            b,
+            c,
+        ])
+        .unwrap()
     } else {
-        (
-            dimension,
-            Task::from_vec(
-                (0..matrices)
-                    .map(|_| {
-                        use rand::prelude::*;
-                        let mut rng = rand::thread_rng();
-                        Matrix::from_vec(
-                            (0..dimension * dimension)
-                                .map(|_| rng.gen_range(-1. ..0.))
-                                .map(|v| -v)
-                                .collect(),
-                        )
-                        .unwrap()
-                    })
-                    .collect(),
-            )
-            .unwrap(),
+        Task::from_vec(
+            (0..matrices)
+                .map(|_| {
+                    use rand::prelude::*;
+                    let mut rng = rand::thread_rng();
+                    Matrix::from_vec(
+                        (0..dimension * dimension)
+                            .map(|_| rng.gen_range(-1. ..0.))
+                            .map(|v| -v)
+                            .collect(),
+                    )
+                    .unwrap()
+                })
+                .collect(),
         )
+        .unwrap()
     };
 
     let mut measurement = Measurement {

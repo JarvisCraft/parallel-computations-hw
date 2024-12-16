@@ -22,14 +22,14 @@ pub const V1: Config = Config {
 pub const V2: Config = Config {
     src: include_str!("multiply2.cl"),
     work_size: WorkSize {
-        local: Some(NonZeroUsize::new(32).unwrap()),
+        local: Some(NonZeroUsize::new(8).unwrap()),
         per_thread: NonZeroUsize::new(1).unwrap(),
     },
 };
 pub const V3: Config = Config {
     src: include_str!("multiply3.cl"),
     work_size: WorkSize {
-        local: Some(NonZeroUsize::new(32).unwrap()),
-        per_thread: NonZeroUsize::new(8).unwrap(),
+        local: Some(NonZeroUsize::new(16).unwrap()),
+        per_thread: NonZeroUsize::new(4).unwrap(),
     },
 };

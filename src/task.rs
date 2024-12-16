@@ -1,9 +1,6 @@
 use std::ops::{Index, IndexMut};
 
-use crate::{
-    types::{Value, ZERO},
-    util::sqrt,
-};
+use crate::{types::Value, util::sqrt};
 
 /// Column-major matrix.
 #[derive(Debug, Clone, PartialEq, PartialOrd)]

@@ -26,6 +26,11 @@ const COMMAND_QUEUE_FLAGS: cl_command_queue_properties =
 #[cfg(not(feature = "profiling"))]
 const COMMAND_QUEUE_FLAGS: cl_command_queue_properties = 0;
 
+#[cfg(feature = "no-compiler-options")]
+const COMPILER_OPTIONS: &str = "";
+#[cfg(not(feature = "no-compiler-options"))]
+const COMPILER_OPTIONS: &str = opencl3::program::CL_STD_3_0;
+
 const KERNEL_NAME: &str = "multiply";
 
 #[derive(thiserror::Error, Debug)]
@@ -70,12 +75,8 @@ impl Executor {
 
         let command_queue =
             CommandQueue::create_default_with_properties(context, COMMAND_QUEUE_FLAGS, 0)?;
-        let program = Program::create_and_build_from_source(
-            context,
-            config.src,
-            opencl3::program::CL_STD_3_0,
-        )
-        .map_err(NewExecutorError::Compile)?;
+        let program = Program::create_and_build_from_source(context, config.src, COMPILER_OPTIONS)
+            .map_err(NewExecutorError::Compile)?;
         let kernel = Kernel::create(&program, KERNEL_NAME)?;
 
         let a_buffer: Buffer<f32> = unsafe {
@@ -133,6 +134,9 @@ impl Executor {
         let Some(first) = task.matrices().first() else {
             return Solution(vec![]);
         };
+        if n == 1 {
+            return Solution(vec![first.clone()]);
+        }
 
         let mut left_muls = Vec::with_capacity(n);
         left_muls.push(first.clone());
@@ -169,10 +173,6 @@ impl Executor {
         )
     }
 
-    pub fn multiply_all(&mut self, matrices: impl Iterator<Item = Matrix>) -> Option<Matrix> {
-        matrices.reduce(|l, r| self.multiply(&l, &r))
-    }
-
     pub unsafe fn multiply_all_unchecked(
         &mut self,
         matrices: impl Iterator<Item = Matrix>,
@@ -180,7 +180,8 @@ impl Executor {
         matrices.reduce(|l, r| unsafe { self.multiply_unchecked(&l, &r) })
     }
 
-    pub fn multiply(&mut self, a: &Matrix, b: &Matrix) -> Matrix {
+    #[cfg(test)]
+    fn multiply(&mut self, a: &Matrix, b: &Matrix) -> Matrix {
         assert!(a.n() == b.n(), "Matrices should have the same dimensions");
         assert!(
             a.n() == self.n,
@@ -192,7 +193,7 @@ impl Executor {
         unsafe { self.multiply_unchecked(a, b) }
     }
     pub unsafe fn multiply_unchecked(&mut self, a: &Matrix, b: &Matrix) -> Matrix {
-        let _a_write_event = unsafe {
+        let _ = unsafe {
             self.command_queue.enqueue_write_buffer(
                 &mut self.a_buffer,
                 CL_BLOCKING,
@@ -202,7 +203,7 @@ impl Executor {
             )
         }
         .expect("Failed to write A");
-        let _b_write_event = unsafe {
+        _ = unsafe {
             self.command_queue.enqueue_write_buffer(
                 &mut self.b_buffer,
                 CL_BLOCKING,
@@ -232,7 +233,7 @@ impl Executor {
 
         let events = vec![kernel_event.get()];
         let mut result = vec![ZERO; self.buffer_size];
-        let _c_read_event = unsafe {
+        _ = unsafe {
             self.command_queue.enqueue_read_buffer(
                 &self.c_buffer,
                 CL_BLOCKING,
@@ -252,8 +253,8 @@ impl Executor {
             let end_time = kernel_event
                 .profiling_command_end()
                 .expect("Failed to get end time");
-            tracing::info!(
-                "GPU task took {:?} ns",
+            tracing::debug!(
+                "GPU task took {:?}",
                 std::time::Duration::from_nanos(end_time - start_time)
             );
         }

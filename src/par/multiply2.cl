@@ -1,11 +1,11 @@
-const int TS = 32;
-
 kernel void multiply(
     const int N,
     const global float* A,
     const global float* B,
     global float* C
 ) {
+    const int TS = 8;
+
     const int row = get_local_id(0);
     const int col = get_local_id(1);
     const int globalRow = TS * get_group_id(0) + row;
